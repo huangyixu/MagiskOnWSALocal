@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 #
 # This file is part of MagiskOnWSALocal.
 #
@@ -15,14 +15,33 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with MagiskOnWSALocal.  If not, see <https://www.gnu.org/licenses/>.
 #
-# Copyright (C) 2022 LSPosed Contributors
+# Copyright (C) 2023 LSPosed Contributors
 #
 
 import sys
-
 import zipfile
 from pathlib import Path
 import platform
+import os
+from typing import Any, OrderedDict
+
+
+class Prop(OrderedDict):
+    def __init__(self, props: str = ...) -> None:
+        super().__init__()
+        for i, line in enumerate(props.splitlines(False)):
+            if '=' in line:
+                k, v = line.split('=', 1)
+                self[k] = v
+            else:
+                self[f".{i}"] = line
+
+    def __setattr__(self, __name: str, __value: Any) -> None:
+        self[__name] = __value
+
+    def __repr__(self):
+        return '\n'.join(f'{item}={self[item]}' for item in self)
+
 
 is_x86_64 = platform.machine() in ("AMD64", "x86_64")
 host_abi = "x64" if is_x86_64 else "arm64"
@@ -34,12 +53,24 @@ if not Path(workdir).is_dir():
 
 abi_map = {"x64": ["x86_64", "x86"], "arm64": ["arm64-v8a", "armeabi-v7a"]}
 
+
 def extract_as(zip, name, as_name, dir):
     info = zip.getinfo(name)
     info.filename = as_name
     zip.extract(info, workdir / dir)
 
+
 with zipfile.ZipFile(magisk_zip) as zip:
+    props = Prop(zip.comment.decode().replace('\000', '\n'))
+    versionName = props.get("version")
+    versionCode = props.get("versionCode")
+    print(f"Magisk version: {versionName} ({versionCode})", flush=True)
+    with open(os.environ['WSA_WORK_ENV'], 'r') as environ_file:
+        env = Prop(environ_file.read())
+        env.MAGISK_VERSION_NAME = versionName
+        env.MAGISK_VERSION_CODE = versionCode
+    with open(os.environ['WSA_WORK_ENV'], 'w') as environ_file:
+        environ_file.write(str(env))
     extract_as(
         zip, f"lib/{ abi_map[arch][0] }/libmagisk64.so", "magisk64", "magisk")
     extract_as(
